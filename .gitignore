@@ -1,0 +1,12 @@
+.venv/
+.vscode/
+
+cache/
+
+__pycache__/
+
+assets/
+data/MOT20/
+output/
+
+external/weights/

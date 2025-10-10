@@ -37,16 +37,49 @@ class Detector(torch.nn.Module):
             self.model = yolox_adaptor.get_model(self.path, self.dataset)
 
     def forward(self, batch, tag=None):
-        if tag in self.cache:
-            return self.cache[tag]
+        """If tag is a list (batch tags), cache per item; otherwise cache single item."""
+        if isinstance(tag, (list, tuple)):
+            # Attempt to serve entirely from cache if all present
+            cached_outputs = []
+            all_cached = True
+            for t in tag:
+                if t in self.cache:
+                    cached_outputs.append(self.cache[t])
+                else:
+                    all_cached = False
+                    break
+            if all_cached:
+                return cached_outputs
+
+        else:
+            if tag in self.cache:
+                return self.cache[tag]
+
         if self.model is None:
             self.initialize_model()
 
         with torch.no_grad():
             batch = batch.half()
             output = self.model(batch)
-        if output is not None:
-            self.cache[tag] = output.cpu().detach()
+
+        # Persist to cache
+        if isinstance(tag, (list, tuple)):
+            # output is a list, align lengths
+            if isinstance(output, (list, tuple)) and len(output) == len(tag):
+                for t, o in zip(tag, output):
+                    if o is not None:
+                        self.cache[t] = o.cpu().detach()
+            return output
+        else:
+            if output is not None:
+                # For single item forward, yolox_adaptor returns list of length 1
+                if isinstance(output, (list, tuple)):
+                    o0 = output[0]
+                else:
+                    o0 = output
+                if o0 is not None:
+                    self.cache[tag] = o0.cpu().detach()
+                return o0
 
         return output
 

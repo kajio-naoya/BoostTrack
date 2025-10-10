@@ -127,7 +127,28 @@ class EmbeddingComputer:
 
             crops = []
             for p in results:
-                crop = img[p[1] : p[3], p[0] : p[2]]
+                # Check if bounding box is valid (not empty)
+                if p[2] <= p[0] or p[3] <= p[1]:
+                    # Create a dummy crop for invalid bounding boxes
+                    crop = np.zeros((self.crop_size[1], self.crop_size[0], 3), dtype=np.uint8)
+                else:
+                    crop = img[p[1] : p[3], p[0] : p[2]]
+                    # Check if crop is empty
+                    if crop.size == 0:
+                        crop = np.zeros((self.crop_size[1], self.crop_size[0], 3), dtype=np.uint8)
+                    else:
+                        crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+                        crop = cv2.resize(crop, self.crop_size, interpolation=cv2.INTER_LINEAR).astype(np.float32)
+                        if self.normalize:
+                            crop /= 255
+                            crop -= np.array((0.485, 0.456, 0.406))
+                            crop /= np.array((0.229, 0.224, 0.225))
+                        crop = torch.as_tensor(crop.transpose(2, 0, 1))
+                        crop = crop.unsqueeze(0)
+                        crops.append(crop)
+                        continue
+                
+                # Process dummy crop
                 crop = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
                 crop = cv2.resize(crop, self.crop_size, interpolation=cv2.INTER_LINEAR).astype(np.float32)
                 if self.normalize:

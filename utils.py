@@ -8,22 +8,37 @@ import shutil
 def write_results_no_score(filename, results):
     """Writes results in MOT style to filename."""
     save_format = "{frame},{id},{x1},{y1},{w},{h},{c},-1,-1,-1\n"
-    with open(filename, "w") as f:
-        for frame_id, tlwhs, track_ids, conf in results:
-            for tlwh, track_id, c in zip(tlwhs, track_ids, conf):
-                if track_id < 0:
-                    continue
-                x1, y1, w, h = tlwh
-                line = save_format.format(
-                    frame=frame_id,
-                    id=track_id,
-                    x1=round(x1, 1),
-                    y1=round(y1, 1),
-                    w=round(w, 1),
-                    h=round(h, 1),
-                    c=round(c, 2)
+    # Flatten and sort by (frame asc, id asc)
+    flat = []
+    for frame_id, tlwhs, track_ids, conf in results:
+        for tlwh, track_id, c in zip(tlwhs, track_ids, conf):
+            if track_id < 0:
+                continue
+            x1, y1, w, h = tlwh
+            flat.append(
+                (
+                    int(frame_id),
+                    int(track_id),
+                    round(x1, 1),
+                    round(y1, 1),
+                    round(w, 1),
+                    round(h, 1),
+                    round(c, 2),
                 )
-                f.write(line)
+            )
+    flat.sort(key=lambda r: (r[0], r[1]))
+    with open(filename, "w") as f:
+        for frame, tid, x1, y1, w, h, c in flat:
+            line = save_format.format(
+                frame=frame,
+                id=tid,
+                x1=x1,
+                y1=y1,
+                w=w,
+                h=h,
+                c=c,
+            )
+            f.write(line)
 
 
 def filter_targets(online_targets, aspect_ratio_thresh, min_box_area):

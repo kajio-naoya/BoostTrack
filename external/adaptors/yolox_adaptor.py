@@ -16,16 +16,20 @@ class PostModel(nn.Module):
 
     def forward(self, batch):
         """
-        Returns Nx5, (x1, y1, x2, y2, conf)
+        Accepts a batch [B, C, H, W] and returns a list of length B,
+        each element is either None or a tensor of Nx5: (x1, y1, x2, y2, conf)
         """
         raw = self.model(batch)
-        pred = postprocess(
+        preds = postprocess(
             raw, self.exp.num_classes, self.exp.test_conf, self.exp.nmsthre
-        )[0]
-        if pred is not None:
-            return torch.cat((pred[:, :4], (pred[:, 4] * pred[:, 5])[:, None]), dim=1)
-        else:
-            return None
+        )
+        outputs = []
+        for p in preds:
+            if p is not None:
+                outputs.append(torch.cat((p[:, :4], (p[:, 4] * p[:, 5])[:, None]), dim=1))
+            else:
+                outputs.append(None)
+        return outputs
 
 
 def get_model(path, dataset):
