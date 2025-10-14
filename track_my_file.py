@@ -81,6 +81,11 @@ def track_my_file(video_path, output_dir):
     # Preproc config (use same normalization as in dataset loader)
     rgb_means = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
+    
+    # Tiling parameters
+    OVERLAP_RATIO = 0.1  # 10% overlap
+    NMS_IOU_THRESHOLD = 0.7  # IoU threshold for NMS
+    NMS_SCORE_THRESHOLD = 0.1  # Minimum confidence threshold
 
     frame_idx = 0
     total_time = 0.0
@@ -93,24 +98,31 @@ def track_my_file(video_path, output_dir):
         use_tiling = max(height, width) > 2000
         
         if use_tiling:
-            # Split into 4x4 tiles for detection
+            # Split into 4x4 tiles with overlap for detection
             grid_n = 4
-            tile_h, tile_w = height // grid_n, width // grid_n
+            tile_h_base = height // grid_n
+            tile_w_base = width // grid_n
+            overlap_h = int(tile_h_base * OVERLAP_RATIO)
+            overlap_w = int(tile_w_base * OVERLAP_RATIO)
             all_detections = []
 
             # Prepare full-frame tensor once and keep its scale (r_full)
             proc_img_full, r_full = preproc(np_img_bgr, size, rgb_means, std, swap=(2, 0, 1))
             img_tensor = torch.from_numpy(proc_img_full).unsqueeze(0).to(device)
 
-            # Build batch of tiles
+            # Build batch of tiles with overlap
             batch_tiles = []
             batch_rs = []
             batch_offsets = []
             batch_tags = []
             for i in range(grid_n):
                 for j in range(grid_n):
-                    y1, y2 = i * tile_h, min((i + 1) * tile_h, height)
-                    x1, x2 = j * tile_w, min((j + 1) * tile_w, width)
+                    # Calculate tile boundaries with overlap
+                    y1 = max(0, i * tile_h_base - overlap_h)
+                    y2 = min(height, (i + 1) * tile_h_base + overlap_h)
+                    x1 = max(0, j * tile_w_base - overlap_w)
+                    x2 = min(width, (j + 1) * tile_w_base + overlap_w)
+                    
                     tile = np_img_bgr[y1:y2, x1:x2]
                     if tile.size == 0:
                         continue
@@ -125,21 +137,67 @@ def track_my_file(video_path, output_dir):
                 if len(batch_tiles) > 0:
                     batch_tensor = torch.from_numpy(np.stack(batch_tiles)).to(device)
                     batch_preds = det(batch_tensor, batch_tags)
-                    # Iterate per-tile outputs
-                    for (pred, (x1, y1), r_tile) in zip(batch_preds, batch_offsets, batch_rs):
-                        if pred is None:
-                            continue
-                        pred_np = pred.cpu().numpy()
-                        # 1) to tile-original
-                        pred_np[:, :4] /= r_tile
-                        # 2) shift to full-image original
-                        pred_np[:, :4] += np.array([x1, y1, x1, y1])
-                        all_detections.append(pred_np)
+                    
+                    # GPU上で座標変換（並列処理）
+                    valid_preds = []
+                    valid_offsets = []
+                    valid_rs = []
+                    
+                    for i, (pred, (x1, y1), r_tile) in enumerate(zip(batch_preds, batch_offsets, batch_rs)):
+                        if pred is not None:
+                            valid_preds.append(pred)
+                            valid_offsets.append(torch.tensor([x1, y1, x1, y1], device=device, dtype=pred.dtype))
+                            valid_rs.append(r_tile)
+                    
+                    if valid_preds:
+                        # GPU上で一括座標変換
+                        stacked_preds = torch.cat(valid_preds, dim=0)
+                        
+                        # 各予測のスケールとオフセットを準備
+                        scales = []
+                        offsets = []
+                        for i, (pred, offset, r_tile) in enumerate(zip(valid_preds, valid_offsets, valid_rs)):
+                            scales.extend([r_tile] * len(pred))
+                            # 各検出に対してオフセットを繰り返し
+                            for _ in range(len(pred)):
+                                offsets.append(offset)
+                        
+                        stacked_scales = torch.tensor(scales, device=device, dtype=stacked_preds.dtype).unsqueeze(1)
+                        stacked_offsets = torch.stack(offsets, dim=0)
+                        
+                        # 座標変換をGPU上で並列実行
+                        stacked_preds[:, :4] /= stacked_scales
+                        stacked_preds[:, :4] += stacked_offsets
+                        
+                        # 一度だけCPU転送
+                        combined_pred = stacked_preds.cpu().numpy()
+                    else:
+                        combined_pred = None
                 
-                if all_detections:
-                    # Combine all detections and filter out invalid ones
-                    combined_pred = np.vstack(all_detections)
-                    # Filter out detections that are outside image bounds
+                # Apply NMS to remove overlapping detections
+                if combined_pred is not None and len(combined_pred) > 1:
+                    # Convert to format for cv2.dnn.NMSBoxes: [x, y, w, h]
+                    boxes = combined_pred[:, :4].copy()
+                    boxes[:, 2] = boxes[:, 2] - boxes[:, 0]  # w = x2 - x1
+                    boxes[:, 3] = boxes[:, 3] - boxes[:, 1]  # h = y2 - y1
+                    
+                    scores = combined_pred[:, 4]
+                    
+                    # Apply NMS with IoU threshold
+                    indices = cv2.dnn.NMSBoxes(
+                        boxes.tolist(), 
+                        scores.tolist(), 
+                        score_threshold=NMS_SCORE_THRESHOLD,
+                        nms_threshold=NMS_IOU_THRESHOLD
+                    )
+                    
+                    if len(indices) > 0:
+                        combined_pred = combined_pred[indices.flatten()]
+                    else:
+                        combined_pred = None
+                
+                # Filter out detections that are outside image bounds
+                if combined_pred is not None:
                     valid_mask = (
                         (combined_pred[:, 0] >= 0) & (combined_pred[:, 1] >= 0) &
                         (combined_pred[:, 2] < width) & (combined_pred[:, 3] < height) &
@@ -152,12 +210,10 @@ def track_my_file(video_path, output_dir):
                         combined_pred[:, 1] = np.clip(combined_pred[:, 1], 0, height - 1)
                         combined_pred[:, 2] = np.clip(combined_pred[:, 2], 0, width - 1)
                         combined_pred[:, 3] = np.clip(combined_pred[:, 3], 0, height - 1)
-                        # 3) map to full-frame preprocessed coordinates (so tracker.update rescales correctly)
+                        # Map to full-frame preprocessed coordinates (so tracker.update rescales correctly)
                         combined_pred[:, :4] *= r_full
                     else:
                         combined_pred = None
-                else:
-                    combined_pred = None
 
                 targets = tracker.update(combined_pred, img_tensor, np_img_bgr, tag)
                 tlwhs, ids, confs = utils.filter_targets(targets, GeneralSettings['aspect_ratio_thresh'], GeneralSettings['min_box_area'])
