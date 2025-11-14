@@ -6,8 +6,11 @@ import pickle
 import torch
 import cv2
 import torchvision
-import torchreid
 import numpy as np
+
+# Import external first to ensure external/deep-person-reid is in sys.path
+import external
+import torchreid
 
 from external.adaptors.fastreid_adaptor import FastReID
 

@@ -13,8 +13,16 @@ from tracker.boost_track import BoostTrack
 from types import SimpleNamespace
 from dataset import preproc
 
-def track_my_file(video_path, output_dir):
+# Module-level variable to store road_polygon for is_roadway function
+_road_polygon = None
+
+def track_my_file(video_path, output_dir, start_frame=None, end_frame=None, road_polygon=None):
+    global _road_polygon
     os.makedirs(output_dir, exist_ok=True)
+    
+    # Set the global road_polygon if provided
+    if road_polygon is not None:
+        _road_polygon = road_polygon
 
     # Configure settings (use MOT17 defaults for general videos)
     GeneralSettings.values['dataset'] = 'mot17'
@@ -59,7 +67,7 @@ def track_my_file(video_path, output_dir):
             raise RuntimeError("Failed to read the first image frame.")
         height, width = first_img.shape[:2]
         # default fps when reading image sequences
-        fps = 25.0
+        fps = 30.0
     else:
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -94,12 +102,19 @@ def track_my_file(video_path, output_dir):
         nonlocal total_time
         tag = f"{video_name}:{frame_id}"
         
-        # Check if image is large enough to warrant tiling (e.g., > 2000px in any dimension)
-        use_tiling = max(height, width) > 2000
+        # Determine tiling grid size based on image dimensions
+        max_dim = max(height, width)
+        if max_dim > 4000:
+            grid_n = 4
+        elif max_dim > 2000:
+            grid_n = 2
+        else:
+            grid_n = None
+
+        use_tiling = grid_n is not None
         
         if use_tiling:
-            # Split into 4x4 tiles with overlap for detection
-            grid_n = 4
+            # Split into grid_n x grid_n tiles with overlap for detection
             tile_h_base = height // grid_n
             tile_w_base = width // grid_n
             overlap_h = int(tile_h_base * OVERLAP_RATIO)
@@ -151,6 +166,8 @@ def track_my_file(video_path, output_dir):
                     
                     if valid_preds:
                         # GPU上で一括座標変換
+                        # すべてのテンソルを同じデバイスに移動
+                        valid_preds = [pred.to(device) for pred in valid_preds]
                         stacked_preds = torch.cat(valid_preds, dim=0)
                         
                         # 各予測のスケールとオフセットを準備
@@ -163,7 +180,7 @@ def track_my_file(video_path, output_dir):
                                 offsets.append(offset)
                         
                         stacked_scales = torch.tensor(scales, device=device, dtype=stacked_preds.dtype).unsqueeze(1)
-                        stacked_offsets = torch.stack(offsets, dim=0)
+                        stacked_offsets = torch.stack(offsets, dim=0).to(device)
                         
                         # 座標変換をGPU上で並列実行
                         stacked_preds[:, :4] /= stacked_scales
@@ -274,6 +291,10 @@ def track_my_file(video_path, output_dir):
             if frame is None:
                 continue
             frame_idx += 1
+            if start_frame is not None and frame_idx < start_frame:
+                continue
+            if end_frame is not None and frame_idx >= end_frame:
+                break
             process_frame(frame, frame_idx)
     else:
         while True:
@@ -283,8 +304,11 @@ def track_my_file(video_path, output_dir):
             if not ret:
                 break
             frame_idx += 1
+            if start_frame is not None and frame_idx < start_frame:
+                continue
+            if end_frame is not None and frame_idx >= end_frame:
+                break
             process_frame(frame, frame_idx)
-
     # Cleanup IO
     if cap is not None:
         cap.release()
@@ -321,6 +345,54 @@ def track_my_file(video_path, output_dir):
             f.write(f"{frame},{tid},{x},{y},{w},{h},{sc}\n")
 
     print(f"Finished. Results: {mot_path}, {csv_path}; Overlay video: {overlay_path}")
+
+def is_roadway(points: torch.Tensor) -> torch.Tensor:
+    """
+    Check if the points are on the roadway.
+    Input:
+        points: torch.Tensor, shape (n, 2)
+    Output:
+        is_roadway: torch.Tensor, shape (n,)
+    """
+    global _road_polygon
+    
+    # Use the global road_polygon if set, otherwise use default (road_polygon_A)
+    if _road_polygon is not None:
+        road_polygon = _road_polygon
+    else:
+        # Default road_polygon (road_polygon_A)
+        road_polygon = np.array([
+            [1400, 1400],
+            [3280, 1200],
+            [3520, 800],
+            [3160, 0],
+            [3720, 0],
+            [4280, 1040],
+            [4800, 1360],
+            [5600, 1200],
+            [5520, 1680],
+            [4760, 1880],
+            [5040, 2800],
+            [4400, 2800],
+            [4200, 2160],
+            [3720, 1920],
+            [1600, 2240]
+        ], dtype=np.float32)
+    
+    # road_polygonを確実にnp.float32の(n, 2)形状に変換
+    road_polygon = np.ascontiguousarray(road_polygon, dtype=np.float32)
+    
+    # pointsをnumpy配列に変換
+    points_np = points.cpu().numpy().astype(np.float32)
+    
+    # 各点に対してpointPolygonTestを実行
+    results = []
+    for point in points_np:
+        result = cv2.pointPolygonTest(road_polygon, tuple(point), False)
+        results.append(result > 0)
+    
+    # 結果をtorch.Tensorに変換して返す
+    return torch.tensor(results, device=points.device, dtype=torch.bool)
 
 if __name__ == "__main__":
     video_path = sys.argv[1]

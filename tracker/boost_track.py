@@ -9,6 +9,7 @@ from typing import Optional, List
 
 import cv2
 import numpy as np
+import torch
 
 from default_settings import GeneralSettings, BoostTrackSettings, BoostTrackPlusPlusSettings
 from tracker.embedding import EmbeddingComputer
@@ -146,6 +147,12 @@ class BoostTrack(object):
         self.use_sb = BoostTrackPlusPlusSettings['use_sb']
         self.use_vt = BoostTrackPlusPlusSettings['use_vt']
 
+        # Spatial prior parameters
+        self.use_spatial_prior = True
+        self.roadway_penalty = 0.3
+        self.img_height = None
+        self.img_width = None
+
         if GeneralSettings['use_embedding']:
             self.embedder = EmbeddingComputer(GeneralSettings['dataset'], GeneralSettings['test_dataset'], True)
         else:
@@ -234,8 +241,25 @@ class BoostTrack(object):
             self.trackers[m[1]].update(dets[m[0], :], scores[m[0]])
             self.trackers[m[1]].update_emb(dets_embs[m[0]], alpha=dets_alpha[m[0]])
 
+        # Initialize image dimensions on first frame
+        if self.frame_count == 1 and self.img_height is None:
+            self.img_height, self.img_width = img_numpy.shape[:2]
+
         for i in unmatched_dets:
-            if dets[i, 4] >= self.det_thresh:
+            effective_score = dets[i, 4]
+            
+            if self.use_spatial_prior:
+                # Calculate bottom center point of bounding box
+                x_center = (dets[i, 0] + dets[i, 2]) / 2
+                y_bottom = dets[i, 3]
+                point = torch.tensor([[x_center, y_bottom]], dtype=torch.float32, device=img_tensor.device)
+                
+                # Check if point is on roadway
+                from track_my_file import is_roadway
+                if is_roadway(point)[0]:
+                    effective_score -= self.roadway_penalty
+            
+            if effective_score >= self.det_thresh:
                 self.trackers.append(KalmanBoxTracker(dets[i, :], emb=dets_embs[i]))
 
         ret = []
