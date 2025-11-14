@@ -1,0 +1,120 @@
+[
+    {
+      "video": "DSCF0027",
+      "time_ranges": [
+        {"start": 65, "end": 130},
+        {"start": 205, "end": 270},
+        {"start": 345, "end": 410},
+        {"start": 485, "end": 555},
+        {"start": 620, "end": 685}
+      ]
+    },
+    {
+      "video": "DSCF0028",
+      "time_ranges": [
+        {"start": 65, "end": 130},
+        {"start": 200, "end": 260},
+        {"start": 340, "end": 405},
+        {"start": 485, "end": 545},
+        {"start": 625, "end": 690}
+      ]
+    },
+    {
+      "video": "DSCF0029",
+      "time_ranges": [
+        {"start": 70, "end": 135},
+        {"start": 205, "end": 265},
+        {"start": 345, "end": 410},
+        {"start": 490, "end": 550},
+        {"start": 635, "end": 695}
+      ]
+    },
+    {
+      "video": "DSCF0032",
+      "time_ranges": [
+        {"start": 55, "end": 120},
+        {"start": 195, "end": 260},
+        {"start": 340, "end": 405},
+        {"start": 480, "end": 545},
+        {"start": 620, "end": 685}
+      ]
+    },
+    {
+      "video": "DSCF0033",
+      "time_ranges": [
+        {"start": 10, "end": 75},
+        {"start": 150, "end": 225},
+        {"start": 290, "end": 355},
+        {"start": 430, "end": 495},
+        {"start": 570, "end": 645}
+      ]
+    },
+    {
+      "video": "DSCF0034",
+      "time_ranges": [
+        {"start": 65, "end": 130},
+        {"start": 205, "end": 270},
+        {"start": 350, "end": 410},
+        {"start": 485, "end": 550},
+        {"start": 630, "end": 690}
+      ]
+    },
+    {
+      "video": "DSCF0035",
+      "time_ranges": [
+        {"start": 70, "end": 130},
+        {"start": 210, "end": 270},
+        {"start": 350, "end": 415},
+        {"start": 490, "end": 555},
+        {"start": 635, "end": 695}
+      ]
+    },
+    {
+      "video": "DSCF0036",
+      "time_ranges": [
+        {"start": 65, "end": 130},
+        {"start": 210, "end": 270},
+        {"start": 350, "end": 415},
+        {"start": 490, "end": 550}
+      ]
+    },
+    {
+      "video": "DSCF0037",
+      "time_ranges": [
+        {"start": 65, "end": 135},
+        {"start": 205, "end": 270},
+        {"start": 345, "end": 410},
+        {"start": 485, "end": 545},
+        {"start": 630, "end": 695}
+      ]
+    },
+    {
+      "video": "DSCF0038",
+      "time_ranges": [
+        {"start": 65, "end": 125},
+        {"start": 205, "end": 265},
+        {"start": 345, "end": 405},
+        {"start": 485, "end": 550},
+        {"start": 625, "end": 690}
+      ]
+    },
+    {
+      "video": "DSCF0039",
+      "time_ranges": [
+        {"start": 75, "end": 135},
+        {"start": 215, "end": 270},
+        {"start": 355, "end": 415},
+        {"start": 490, "end": 555}
+      ]
+    },
+    {
+      "video": "DSCF0040",
+      "time_ranges": [
+        {"start": 70, "end": 135},
+        {"start": 210, "end": 280},
+        {"start": 350, "end": 415},
+        {"start": 490, "end": 560},
+        {"start": 630, "end": 695}
+      ]
+    }
+  ]
