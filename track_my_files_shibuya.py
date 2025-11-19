@@ -57,6 +57,9 @@ if __name__ == "__main__":
         else:
             road_polygon = road_polygon_B
         output_dir = os.path.join(output_base_dir, video_name)
+        if os.path.exists(output_dir):
+            print(f"Skipping {video_name} because it already exists")
+            continue
 
         print(f"Tracking {video_name}")
         track_my_file(video_path, output_dir, road_polygon=road_polygon)

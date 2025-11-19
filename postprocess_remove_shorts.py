@@ -8,7 +8,7 @@ FRAMES_THRESHOLD = 300
 import pandas as pd
 
 def remove_shorts(input_file, output_file, FRAMES_THRESHOLD):
-    df = pd.read_csv(input_file, header=None, names=["frame", "id", "x", "y", "w", "h", "score", "_1", "_2", "_3"])
+    df = pd.read_csv(input_file)
 
     df_per_person = df.groupby("id")
     valid_person_ids = []
@@ -17,11 +17,11 @@ def remove_shorts(input_file, output_file, FRAMES_THRESHOLD):
             valid_person_ids.append(person_id)
     new_df = df[df["id"].isin(valid_person_ids)]
 
-    new_df.to_csv(output_file, header=None, index=False)
+    new_df.to_csv(output_file, index=False)
     print(f"Number of valid person IDs has been reduced from {len(df_per_person)} to {len(valid_person_ids)}")
     print(f"Saved to {output_file}")
 
 if __name__ == "__main__":
-    input_file = "output/sample_movie_1020/sample_movie.txt"
-    output_file = "output/sample_movie_1020/sample_movie_postprocessed.txt"
+    input_file = "output/sample_movie_1020/sample_movie.csv"
+    output_file = "output/sample_movie_1020/sample_movie_postprocessed.csv"
     remove_shorts(input_file, output_file, FRAMES_THRESHOLD)
